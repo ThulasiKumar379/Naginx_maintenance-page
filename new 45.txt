@@ -1,0 +1,156 @@
+[root@ip-172-31-94-192 ~]# cat toggle-maintenance.sh
+#!/bin/bash
+
+FLAG="/usr/share/nginx/html/maintenance.flag"
+
+if [ "$1" == "on" ]; then
+    sudo touch "$FLAG"
+    echo "Maintenance mode enabled"
+elif [ "$1" == "off" ]; then
+    sudo rm -f "$FLAG"
+    echo "Maintenance mode disabled"
+else
+    echo "Usage: $0 {on|off}"
+fi
+
+sudo systemctl reload nginx
+
+===   Maintenance Page
+[root@ip-172-31-94-192 html]# cat maintenance.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Under Maintenance</title>
+</head>
+<body style="text-align: center; padding-top: 100px;">
+    <h1>We're down for maintenance</h1>
+    <p>Check back soon!</p>
+</body>
+</html>
+
+=======
+
+[root@ip-172-31-94-192 html]# cat video.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sample Video</title>
+</head>
+<body>
+  <h1>Sample Video Playback</h1>
+  <video width="720" controls>
+    <source src="sample.mp4" type="video/mp4">
+    Your browser does not support the video tag.
+  </video>
+</body>
+</html>
+==========
+
+[root@ip-172-31-94-192 nginx]# cat nginx.conf
+# For more information on configuration, see:
+#   * Official English Documentation: http://nginx.org/en/docs/
+#   * Official Russian Documentation: http://nginx.org/ru/docs/
+
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log;
+pid /run/nginx.pid;
+
+# Load dynamic modules. See /usr/share/doc/nginx/README.dynamic.
+include /usr/share/nginx/modules/*.conf;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile            on;
+    tcp_nopush          on;
+    tcp_nodelay         on;
+    keepalive_timeout   65;
+    types_hash_max_size 4096;
+
+    include             /etc/nginx/mime.types;
+    default_type        application/octet-stream;
+
+    # Load modular configuration files from the /etc/nginx/conf.d directory.
+    # See http://nginx.org/en/docs/ngx_core_module.html#include
+    # for more information.
+    include /etc/nginx/conf.d/*.conf;
+
+    server {
+        listen       80;
+        listen       [::]:80;
+        server_name  _;
+        root         /usr/share/nginx/html;
+
+        # Load configuration files for the default server block.
+        include /etc/nginx/default.d/*.conf;
+
+           location = /video.html {
+            if (-f /usr/share/nginx/html/maintenance.flag) {
+                return 503;
+            }
+            root /usr/share/nginx/html;
+            try_files $uri =404;
+        }
+
+        error_page 503 @maintenance;
+
+        location @maintenance {
+            rewrite ^ /maintenance.html break;
+        }
+
+        location = /maintenance.html {
+            root /usr/share/nginx/html;
+            internal;
+        }
+
+
+
+        error_page 404 /404.html;
+        location = /404.html {
+        }
+
+        error_page 500 502 503 504 /50x.html;
+        location = /50x.html {
+        }
+    }
+
+# Settings for a TLS enabled server.
+#
+#    server {
+#        listen       443 ssl;
+#        listen       [::]:443 ssl;
+#        http2        on;
+#        server_name  _;
+#        root         /usr/share/nginx/html;
+#
+#        ssl_certificate "/etc/pki/nginx/server.crt";
+#        ssl_certificate_key "/etc/pki/nginx/private/server.key";
+#        ssl_session_cache shared:SSL:1m;
+#        ssl_session_timeout  10m;
+#        ssl_ciphers HIGH:!aNULL:!MD5;
+#        ssl_prefer_server_ciphers on;
+#
+#        # Load configuration files for the default server block.
+#        include /etc/nginx/default.d/*.conf;
+#
+#        error_page 404 /404.html;
+#        location = /404.html {
+#        }
+#
+#        error_page 500 502 503 504 /50x.html;
+#        location = /50x.html {
+#        }
+#    }
+
+}
+[root@ip-172-31-94-192 nginx]#
